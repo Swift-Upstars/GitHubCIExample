@@ -400,16 +400,7 @@ fastlane/report.xml
 fastlane/README.md
 EOF
 
-# -----------------------------
-# commit + push
-# -----------------------------
-git add .github/workflows/ios.yml ship.sh .gitignore >/dev/null 2>&1 || true
-git add .github/workflows/ios.yml ship.sh .gitignore || true
-git commit -m "Fix CI signing (Push-capable AppStore profile, SPM-safe)" || echo "– уже закоммичено"
 
-git branch -M main
-echo "🚀 Pushing to $TARGET_REPO ..."
-git push -u origin main
 
 # -----------------------------
 # repo Variables
@@ -432,12 +423,24 @@ gh secret set ASC_ISSUER_ID       -R "$TARGET_REPO" --body "$ASC_ISSUER_ID"
 gh secret set ASC_KEY_P8_BASE64   -R "$TARGET_REPO" --body "$ASC_KEY_P8_BASE64"
 gh secret set KEYCHAIN_PASSWORD   -R "$TARGET_REPO" --body "$KEYCHAIN_PASSWORD"
 
-echo "✅ Bootstrap done."
+
+
+
+# -----------------------------
+# commit + push
+# -----------------------------
+git add .github/workflows/ios.yml ship.sh .gitignore >/dev/null 2>&1 || true
+git add .github/workflows/ios.yml ship.sh .gitignore || true
+git commit -m "Fix CI signing (Push-capable AppStore profile, SPM-safe)" || echo "– уже закоммичено"
+
+git branch -M main
+echo "🚀 Pushing to $TARGET_REPO ..."
+git push -u origin main
 
 # Trigger workflow run
-echo "▶️ Triggering workflow run..."
-gh workflow run "iOS Build (Private CI)" -R "$TARGET_REPO" -f upload_mode="$UPLOAD_MODE" || {
-  echo "⚠️ Не смог запустить workflow автоматически. Открой GitHub → Actions и запусти вручную."
-}
-
+#echo "▶️ Triggering workflow run..."
+#gh workflow run "iOS Build (Private CI)" -R "$TARGET_REPO" -f upload_mode="$UPLOAD_MODE" || {
+#  echo "⚠️ Не смог запустить workflow автоматически. Открой GitHub → Actions и запусти вручную."
+#}
+echo "✅ Bootstrap done."
 echo "🎉 Готово. Проверь GitHub → Actions → iOS Build (Private CI)."
