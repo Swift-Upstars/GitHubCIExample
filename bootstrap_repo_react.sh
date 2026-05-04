@@ -433,35 +433,47 @@ fastlane/report.xml
 fastlane/README.md
 EOF
 
+
+
+# -----------------------------
+# repo Variables
+# -----------------------------
+echo "🔧 Setting repo Variables..."
+gh variable set SCHEME_NAME     -R "$TARGET_REPO" --body "$SCHEME_NAME"
+gh variable set APP_IDENTIFIER  -R "$TARGET_REPO" --body "$APP_IDENTIFIER"
+gh variable set TEAM_ID         -R "$TARGET_REPO" --body "$TEAM_ID"
+gh variable set MATCH_GIT_URL   -R "$TARGET_REPO" --body "$MATCH_GIT_URL"
+gh variable set PROJECT         -R "$TARGET_REPO" --body "$PROJECT"
+
+# -----------------------------
+# repo Secrets
+# -----------------------------
+echo "🔐 Setting repo Secrets..."
+gh secret set MATCH_GIT_TOKEN     -R "$TARGET_REPO" --body "$MATCH_GIT_TOKEN"
+gh secret set MATCH_PASSWORD      -R "$TARGET_REPO" --body "$MATCH_PASSWORD"
+gh secret set ASC_KEY_ID          -R "$TARGET_REPO" --body "$ASC_KEY_ID"
+gh secret set ASC_ISSUER_ID       -R "$TARGET_REPO" --body "$ASC_ISSUER_ID"
+gh secret set ASC_KEY_P8_BASE64   -R "$TARGET_REPO" --body "$ASC_KEY_P8_BASE64"
+gh secret set KEYCHAIN_PASSWORD   -R "$TARGET_REPO" --body "$KEYCHAIN_PASSWORD"
+
+
+
+
+# -----------------------------
+# commit + push
+# -----------------------------
 git add .github/workflows/ios.yml ship.sh .gitignore >/dev/null 2>&1 || true
 git add .github/workflows/ios.yml ship.sh .gitignore || true
-git commit -m "Fix RN iOS CI build via workspace and pods" || echo "– уже закоммичено"
+git commit -m "Fix CI signing (Push-capable AppStore profile, SPM-safe)" || echo "– уже закоммичено"
 
 git branch -M main
-echo "🚀 Force pushing to $TARGET_REPO ..."
-git push -u origin main --force
+echo "🚀 Pushing to $TARGET_REPO ..."
+git push -u origin main
 
-echo "🔧 Setting repo Variables..."
-gh variable set SCHEME_NAME    -R "$TARGET_REPO" --body "$SCHEME_NAME"
-gh variable set APP_IDENTIFIER -R "$TARGET_REPO" --body "$APP_IDENTIFIER"
-gh variable set TEAM_ID        -R "$TARGET_REPO" --body "$TEAM_ID"
-gh variable set MATCH_GIT_URL  -R "$TARGET_REPO" --body "$MATCH_GIT_URL"
-gh variable set PROJECT        -R "$TARGET_REPO" --body "$PROJECT"
-gh variable set WORKSPACE      -R "$TARGET_REPO" --body "$WORKSPACE"
-
-echo "🔐 Setting repo Secrets..."
-gh secret set MATCH_GIT_TOKEN   -R "$TARGET_REPO" --body "$MATCH_GIT_TOKEN"
-gh secret set MATCH_PASSWORD    -R "$TARGET_REPO" --body "$MATCH_PASSWORD"
-gh secret set ASC_KEY_ID        -R "$TARGET_REPO" --body "$ASC_KEY_ID"
-gh secret set ASC_ISSUER_ID     -R "$TARGET_REPO" --body "$ASC_ISSUER_ID"
-gh secret set ASC_KEY_P8_BASE64 -R "$TARGET_REPO" --body "$ASC_KEY_P8_BASE64"
-gh secret set KEYCHAIN_PASSWORD -R "$TARGET_REPO" --body "$KEYCHAIN_PASSWORD"
-
+# Trigger workflow run
+#echo "▶️ Triggering workflow run..."
+#gh workflow run "iOS Build (Private CI)" -R "$TARGET_REPO" -f upload_mode="$UPLOAD_MODE" || {
+#  echo "⚠️ Не смог запустить workflow автоматически. Открой GitHub → Actions и запусти вручную."
+#}
 echo "✅ Bootstrap done."
-
-echo "▶️ Triggering workflow run..."
-gh workflow run "iOS Build (Private CI)" -R "$TARGET_REPO" -f upload_mode="$UPLOAD_MODE" || {
-  echo "⚠️ Не смог запустить workflow автоматически. Открой GitHub → Actions и запусти вручную."
-}
-
 echo "🎉 Готово. Проверь GitHub → Actions → iOS Build (Private CI)."
