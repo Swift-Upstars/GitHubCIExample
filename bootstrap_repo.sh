@@ -435,9 +435,9 @@ gh secret set KEYCHAIN_PASSWORD   -R "$TARGET_REPO" --body "$KEYCHAIN_PASSWORD"
 echo "✅ Bootstrap done."
 
 # Trigger workflow run
-#echo "▶️ Triggering workflow run..."
-#gh workflow run "iOS Build (Private CI)" -R "$TARGET_REPO" -f upload_mode="$UPLOAD_MODE" || {
-#  echo "⚠️ Не смог запустить workflow автоматически. Открой GitHub → Actions и запусти вручную."
-#}
+echo "▶️ Triggering workflow run..."
+gh workflow run "iOS Build (Private CI)" -R "$TARGET_REPO" -f upload_mode="$UPLOAD_MODE" || {
+  echo "⚠️ Не смог запустить workflow автоматически. Открой GitHub → Actions и запусти вручную."
+}
 
 echo "🎉 Готово. Проверь GitHub → Actions → iOS Build (Private CI)."
