@@ -1,9 +1,12 @@
-#!/usr/bin/env bash
-set -euo pipefail
 
 TARGET_REPO="${1:-}"
 [[ -n "$TARGET_REPO" ]] || {
-  echo "❌ Укажи ORG/REPO. Пример: ./bootstrap_repo.sh Swift-Upstars/LaughWithLeprekon"
+  echo "❌ Укажи ORG/REPO. Пример: ./bootstrap_repo.sh Swift-Upstars/CityPuzzleTime"
+  exit 1
+}
+
+[[ "$TARGET_REPO" == */* ]] || {
+  echo "❌ Укажи repo в формате ORG/REPO. Пример: Swift-Upstars/CityPuzzleTime"
   exit 1
 }
 
@@ -14,6 +17,28 @@ need base64
 need sed
 need head
 need ls
+
+if [[ ! -d ".git" ]]; then
+  echo "ℹ️ Git repo не найден. Инициализирую..."
+  git init . >/dev/null 2>&1
+fi
+
+
+ORIG_TARGET_REPO="$TARGET_REPO"
+
+ORG="${TARGET_REPO%%/*}"
+REPO_NAME="${TARGET_REPO#*/}"
+
+SAFE_REPO_NAME="$(echo "$REPO_NAME" \
+  | tr '[:upper:]' '[:lower:]' \
+  | sed -E 's/[[:space:]]+/-/g; s/[^a-z0-9._-]//g')"
+
+TARGET_REPO="${ORG}/${SAFE_REPO_NAME}"
+
+if [[ "$ORIG_TARGET_REPO" != "$TARGET_REPO" ]]; then
+  echo "⚠️ Repo name normalized:"
+  echo "   '$ORIG_TARGET_REPO' → '$TARGET_REPO'"
+fi
 
 # =============================
 # ✅ PROJECT CONFIG (CHANGE ONLY THIS BLOCK)
@@ -429,18 +454,14 @@ gh secret set KEYCHAIN_PASSWORD   -R "$TARGET_REPO" --body "$KEYCHAIN_PASSWORD"
 # -----------------------------
 # commit + push
 # -----------------------------
-git add .github/workflows/ios.yml ship.sh .gitignore >/dev/null 2>&1 || true
-git add .github/workflows/ios.yml ship.sh .gitignore || true
-git commit -m "Fix CI signing (Push-capable AppStore profile, SPM-safe)" || echo "– уже закоммичено"
+git add .
+git reset -- bootstrap_repo.sh 2>/dev/null || true
+
+git commit -m "Initial CI setup" || echo "– уже закоммичено"
 
 git branch -M main
 echo "🚀 Pushing to $TARGET_REPO ..."
 git push -u origin main
 
-# Trigger workflow run
-#echo "▶️ Triggering workflow run..."
-#gh workflow run "iOS Build (Private CI)" -R "$TARGET_REPO" -f upload_mode="$UPLOAD_MODE" || {
-#  echo "⚠️ Не смог запустить workflow автоматически. Открой GitHub → Actions и запусти вручную."
-#}
 echo "✅ Bootstrap done."
 echo "🎉 Готово. Проверь GitHub → Actions → iOS Build (Private CI)."
