@@ -491,7 +491,7 @@ gh secret set KEYCHAIN_PASSWORD   -R "$TARGET_REPO" --body "$KEYCHAIN_PASSWORD"
 # commit + push
 # -----------------------------
 git add .
-git reset -- bootstrap_repo.sh 2>/dev/null || true
+
 
 git commit -m "Initial CI setup" || echo "– уже закоммичено"
 
