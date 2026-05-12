@@ -352,6 +352,20 @@ RUBY
 export ASC_KEY_FILEPATH="$ASC_KEY_FILE"
 export PROJECT="$PROJECT"
 
+cleanup() {
+  rm -rf .asc_key
+  rm -rf vendor/bundle
+  rm -rf .bundle
+  rm -rf .fastlane
+  rm -rf fastlane/report.xml
+  rm -rf fastlane/README.md
+  rm -rf fastlane/Preview.html
+  rm -rf fastlane/screenshots
+  rm -rf fastlane/test_output
+}
+
+trap cleanup EXIT
+
 bundle exec fastlane ios ship
 BASH
 
