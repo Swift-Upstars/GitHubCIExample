@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
 
 TARGET_REPO="${1:-}"
 [[ -n "$TARGET_REPO" ]] || {
@@ -17,15 +19,14 @@ need base64
 need sed
 need head
 need ls
+need find
 
 if [[ ! -d ".git" ]]; then
   echo "ℹ️ Git repo не найден. Инициализирую..."
   git init . >/dev/null 2>&1
 fi
 
-
 ORIG_TARGET_REPO="$TARGET_REPO"
-
 ORG="${TARGET_REPO%%/*}"
 REPO_NAME="${TARGET_REPO#*/}"
 
@@ -41,31 +42,17 @@ if [[ "$ORIG_TARGET_REPO" != "$TARGET_REPO" ]]; then
 fi
 
 # =============================
-# ✅ PROJECT CONFIG (CHANGE ONLY THIS BLOCK)
+# ✅ PROJECT CONFIG
 # =============================
 
-# 1) Target repo for app (passed as argument) — НЕ трогаем
-# ./bootstrap_repo.sh MyOrg/MyNewApp
+SCHEME_NAME="MyNewApp"
+APP_IDENTIFIER="com.example.mynewapp"
+TEAM_ID="ABCDE12345"
 
-# 2) Xcode build config
-SCHEME_NAME="MyNewApp"                              # ⬅️ имя Scheme (обычно совпадает с app target)
-APP_IDENTIFIER="com.example.mynewapp"               # ⬅️ bundle id
-TEAM_ID="ABCDE12345"                                # ⬅️ Apple Developer Team ID
+PROJECT="MyNewApp.xcodeproj"
 
-# 3) Project file
-PROJECT="MyNewApp.xcodeproj"                        # ⬅️ .xcodeproj в корне
-# WORKSPACE=""                                      # ⬅️ не используем для SWIFT(возможно нужно будет для React_Native)
-
-# 4) Upload mode defaults
-UPLOAD_MODE="testflight"                            # testflight | appstore
-SUBMIT_FOR_REVIEW="false"                           # true | false
-
-# 5) GitHub org settings for match repo
-# Скрипт сам создаст match repo: ios-certificates-$TEAM_ID в ORG от TARGET_REPO
-MATCH_GIT_URL="https://github.com/MyOrg/ios-certificates.git"
-
-# 6) SECRETS (примерные значения для документации)
-# ❗️В реальном проекте сюда вставляются реальные данные
+UPLOAD_MODE="testflight"
+SUBMIT_FOR_REVIEW="false"
 
 MATCH_GIT_TOKEN="github_pat_example1234567890"
 MATCH_PASSWORD="example_match_password"
@@ -75,29 +62,22 @@ ASC_ISSUER_ID="11111111-2222-3333-4444-555555555555"
 
 KEYCHAIN_PASSWORD="example_keychain_password"
 
-# Либо вставить base64 строку вручную:
 ASC_KEY_P8_BASE64="BASE64_ENCODED_P8_KEY_STRING"
-
-# Либо указать путь к .p8 файлу (локально, не коммитить в репозиторий)
 ASC_KEY_P8_PATH="AuthKey_ABC123DEFG.p8"
 
-# положи файл рядом со скриптом (или укажи путь)
+# =============================
+# ✅ END PROJECT CONFIG
+# =============================
 
 if [[ -z "${ASC_KEY_P8_BASE64:-}" ]]; then
   [[ -f "$ASC_KEY_P8_PATH" ]] || { echo "❌ Не найден p8 файл: $ASC_KEY_P8_PATH"; exit 1; }
   ASC_KEY_P8_BASE64="$(base64 -i "$ASC_KEY_P8_PATH" | tr -d '\n')"
 fi
 
-
-# =============================
-# ✅ END PROJECT CONFIG
-# =============================
-
 export SCHEME_NAME
 export APP_IDENTIFIER
 export TEAM_ID
 export PROJECT
-export MATCH_GIT_URL
 export MATCH_GIT_TOKEN
 export MATCH_PASSWORD
 export ASC_KEY_ID
@@ -107,9 +87,6 @@ export KEYCHAIN_PASSWORD
 export UPLOAD_MODE
 export SUBMIT_FOR_REVIEW
 
-# -----------------------------
-# Проверки env
-# -----------------------------
 req() { [[ -n "${!1:-}" ]] || { echo "❌ $1 пустой"; exit 1; }; }
 
 req MATCH_GIT_TOKEN
@@ -118,61 +95,43 @@ req ASC_KEY_ID
 req ASC_ISSUER_ID
 req ASC_KEY_P8_BASE64
 
-[[ -d ".git" ]] || { echo "❌ Запусти скрипт в корне проекта (где .git)"; exit 1; }
+[[ -d "$PROJECT" ]] || { echo "❌ PROJECT не найден: $PROJECT"; exit 1; }
 
-# project exists?
-if [[ -n "${PROJECT:-}" ]]; then
-  [[ -d "$PROJECT" ]] || { echo "❌ PROJECT не найден: $PROJECT"; exit 1; }
-fi
-
-# -----------------------------
-# gh auth
-# -----------------------------
 if ! gh auth status >/dev/null 2>&1; then
   echo "🔐 gh не авторизован. Запускаю: gh auth login"
   gh auth login
 fi
+
 echo "✅ gh auth OK"
 
-# -----------------------------
-# 🔐 AUTO-CREATE MATCH REPO (Variant A)
-# -----------------------------
-ORG="${TARGET_REPO%%/*}"
 MATCH_REPO_NAME="ios-certificates-${TEAM_ID}"
 MATCH_REPO_FULL="${ORG}/${MATCH_REPO_NAME}"
 
 echo "🔧 Preparing match repo: $MATCH_REPO_FULL"
 
 if ! gh repo view "$MATCH_REPO_FULL" >/dev/null 2>&1; then
-  echo "🆕 Creating new match repo $MATCH_REPO_FULL (private)..."
+  echo "🆕 Creating new match repo $MATCH_REPO_FULL private..."
   gh repo create "$MATCH_REPO_FULL" --private --confirm
 else
   echo "ℹ️ Match repo already exists: $MATCH_REPO_FULL"
 fi
 
-# обновляем MATCH_GIT_URL на team-specific
-export MATCH_GIT_URL="https://github.com/${MATCH_REPO_FULL}.git"
+MATCH_GIT_URL="https://github.com/${MATCH_REPO_FULL}.git"
+export MATCH_GIT_URL
+
 echo "✅ MATCH_GIT_URL set to: $MATCH_GIT_URL"
 
-# -----------------------------
-# Создание target repo если нет
-# -----------------------------
 if ! gh repo view "$TARGET_REPO" >/dev/null 2>&1; then
   echo "🆕 Создаю приватный repo $TARGET_REPO"
   gh repo create "$TARGET_REPO" --private --confirm
 fi
 
-# -----------------------------
-# origin на SSH (чтобы не было Username prompt)
-# -----------------------------
 REMOTE_SSH="git@github.com:${TARGET_REPO}.git"
 git remote remove origin 2>/dev/null || true
 git remote add origin "$REMOTE_SSH"
 
-# -----------------------------
-# Workflow
-# -----------------------------
 mkdir -p .github/workflows
+
 cat > .github/workflows/ios.yml <<'YAML'
 name: iOS Build (Private CI)
 
@@ -195,12 +154,8 @@ jobs:
       SCHEME_NAME: ${{ vars.SCHEME_NAME }}
       APP_IDENTIFIER: ${{ vars.APP_IDENTIFIER }}
       TEAM_ID: ${{ vars.TEAM_ID }}
-
       MATCH_GIT_URL: ${{ vars.MATCH_GIT_URL }}
-
       PROJECT: ${{ vars.PROJECT }}
-      WORKSPACE: ""
-
       UPLOAD_MODE: ${{ github.event.inputs.upload_mode || 'testflight' }}
       SUBMIT_FOR_REVIEW: "false"
 
@@ -225,24 +180,15 @@ jobs:
         env:
           MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
-
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           chmod +x ship.sh
           ./ship.sh
 YAML
 
-# -----------------------------
-# ship.sh (runs on GitHub runner)
-# FIX:
-# - match: только appstore, без force (чтобы не ловить 404/удаление старых профайлов)
-# - signing правим ТОЛЬКО в app target через update_code_signing_settings (SPM не трогаем)
-# - Release будет использовать Apple Distribution + нужный профайл (с Push)
-# -----------------------------
 cat > ship.sh <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -270,14 +216,14 @@ trim_quotes_and_spaces() {
 : "${KEYCHAIN_PASSWORD:?KEYCHAIN_PASSWORD пустой}"
 
 PROJECT="$(trim_quotes_and_spaces "${PROJECT:-}")"
+
 if [[ -z "$PROJECT" || "$PROJECT" == "null" ]]; then
   pr_file="$(ls -1 *.xcodeproj 2>/dev/null | head -n1 || true)"
-  [[ -n "$pr_file" ]] || die "Не найден *.xcodeproj в корне. Укажи vars.PROJECT = <Name>.xcodeproj"
+  [[ -n "$pr_file" ]] || die "Не найден *.xcodeproj в корне"
   PROJECT="$pr_file"
-  echo "ℹ️ Auto-detected PROJECT: $PROJECT"
 fi
 
-[[ "$PROJECT" == *.xcodeproj ]] || die "PROJECT должен заканчиваться на .xcodeproj, сейчас: '$PROJECT'"
+[[ "$PROJECT" == *.xcodeproj ]] || die "PROJECT должен заканчиваться на .xcodeproj"
 [[ -d "$PROJECT" ]] || die "PROJECT не найден: $PROJECT"
 
 mkdir -p .asc_key
@@ -285,7 +231,6 @@ ASC_KEY_FILE="$PWD/.asc_key/AuthKey.p8"
 echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$ASC_KEY_FILE"
 chmod 600 "$ASC_KEY_FILE"
 
-# Bundler + fastlane pin
 if ! command -v bundle >/dev/null 2>&1; then
   gem install bundler --no-document
 fi
@@ -299,6 +244,7 @@ bundle config set path 'vendor/bundle' >/dev/null 2>&1 || true
 bundle install --jobs 4 --retry 3
 
 mkdir -p fastlane
+
 cat > fastlane/Appfile <<APP
 app_identifier("$APP_IDENTIFIER")
 team_id("$TEAM_ID")
@@ -318,6 +264,7 @@ platform :ios do
     )
 
     keychain_name = "fastlane_tmp.keychain"
+
     create_keychain(
       name: keychain_name,
       password: ENV["KEYCHAIN_PASSWORD"],
@@ -329,9 +276,7 @@ platform :ios do
 
     basic = Base64.strict_encode64("x-access-token:#{ENV['MATCH_GIT_TOKEN']}")
     app_id = ENV["APP_IDENTIFIER"]
-
-    # ✅ фиксированное имя профайла, чтобы match не цеплялся к "битым" старым
-    fixed_profile_name = "match AppStore #{app_id} PUSHFIX"
+    fixed_profile_name = "match AppStore #{app_id}"
 
     match(
       type: "appstore",
@@ -347,15 +292,14 @@ platform :ios do
 
     mapping = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING] || {}
     profile_name = mapping[app_id] || fixed_profile_name
+
     UI.user_error!("match не вернул provisioning profile mapping") if profile_name.to_s.empty?
 
-    # ✅ КЛЮЧ: правим signing ТОЛЬКО у app target (а не глобально через xcargs),
-    # чтобы SPM (Firebase/Alamofire/GoogleUtilities) не падали.
     update_code_signing_settings(
       use_automatic_signing: false,
       path: ENV["PROJECT"],
       team_id: ENV["TEAM_ID"],
-      targets: [ENV["SCHEME_NAME"]],          # если имя app target отличается — замени на точное имя target
+      targets: [ENV["SCHEME_NAME"]],
       build_configurations: ["Release"],
       code_sign_identity: "Apple Distribution",
       profile_name: profile_name
@@ -379,6 +323,7 @@ platform :ios do
     )
 
     mode = ENV["UPLOAD_MODE"].to_s.strip.downcase
+
     if mode == "appstore"
       upload_to_app_store(
         api_key: api_key,
@@ -412,24 +357,41 @@ BASH
 
 chmod +x ship.sh
 
-# -----------------------------
-# gitignore
-# -----------------------------
 touch .gitignore
+
+grep -q '^bootstrap_repo.sh$' .gitignore 2>/dev/null || cat >> .gitignore <<'EOF'
+
+# Local bootstrap script with secrets
+bootstrap_repo.sh
+EOF
+
 grep -q '^\.asc_key/' .gitignore 2>/dev/null || cat >> .gitignore <<'EOF'
 
 # CI artifacts / secrets
 .asc_key/
 vendor/bundle/
+.bundle/
+.fastlane/
 fastlane/report.xml
 fastlane/README.md
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+build/
+DerivedData/
+.build/
+*.xcarchive
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.p8
+*.mobileprovision
+*.cer
+*.p12
+*.pem
+*.key
 EOF
 
-
-
-# -----------------------------
-# repo Variables
-# -----------------------------
 echo "🔧 Setting repo Variables..."
 gh variable set SCHEME_NAME     -R "$TARGET_REPO" --body "$SCHEME_NAME"
 gh variable set APP_IDENTIFIER  -R "$TARGET_REPO" --body "$APP_IDENTIFIER"
@@ -437,9 +399,6 @@ gh variable set TEAM_ID         -R "$TARGET_REPO" --body "$TEAM_ID"
 gh variable set MATCH_GIT_URL   -R "$TARGET_REPO" --body "$MATCH_GIT_URL"
 gh variable set PROJECT         -R "$TARGET_REPO" --body "$PROJECT"
 
-# -----------------------------
-# repo Secrets
-# -----------------------------
 echo "🔐 Setting repo Secrets..."
 gh secret set MATCH_GIT_TOKEN     -R "$TARGET_REPO" --body "$MATCH_GIT_TOKEN"
 gh secret set MATCH_PASSWORD      -R "$TARGET_REPO" --body "$MATCH_PASSWORD"
@@ -448,18 +407,45 @@ gh secret set ASC_ISSUER_ID       -R "$TARGET_REPO" --body "$ASC_ISSUER_ID"
 gh secret set ASC_KEY_P8_BASE64   -R "$TARGET_REPO" --body "$ASC_KEY_P8_BASE64"
 gh secret set KEYCHAIN_PASSWORD   -R "$TARGET_REPO" --body "$KEYCHAIN_PASSWORD"
 
+echo "🧹 Cleaning local leftovers..."
 
+rm -rf .asc_key
+rm -rf vendor/bundle
+rm -rf .bundle
+rm -rf .fastlane
+rm -rf fastlane/report.xml
+rm -rf fastlane/README.md
+rm -rf fastlane/Preview.html
+rm -rf fastlane/screenshots
+rm -rf fastlane/test_output
+rm -rf build
+rm -rf DerivedData
+rm -rf .build
 
+rm -rf *.xcarchive
+rm -rf *.ipa
+rm -rf *.dSYM
+rm -rf *.dSYM.zip
 
-# -----------------------------
-# commit + push
-# -----------------------------
+find . -name ".DS_Store" -delete
+find . -name "xcuserdata" -type d -prune -exec rm -rf {} +
+find . -name "*.xcuserstate" -delete
+find . -name "*.xcscmblueprint" -delete
+find . -name "*.xccheckout" -delete
+find . -name "*.mobileprovision" -delete
+find . -name "*.cer" -delete
+find . -name "*.p12" -delete
+find . -name "*.pem" -delete
+find . -name "*.key" -delete
+
 git add .
 
+git reset -- "$ASC_KEY_P8_PATH" 2>/dev/null || true
 
 git commit -m "Initial CI setup" || echo "– уже закоммичено"
 
 git branch -M main
+
 echo "🚀 Pushing to $TARGET_REPO ..."
 git push -u origin main
 
